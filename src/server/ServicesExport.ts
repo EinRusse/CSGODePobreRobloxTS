@@ -1,0 +1,3 @@
+export const ReplicatedStorage: ReplicatedStorage = game.GetService("ReplicatedStorage");
+export const Teams: Teams = game.GetService("Teams");
+export const Players: Players = game.GetService("Players");
