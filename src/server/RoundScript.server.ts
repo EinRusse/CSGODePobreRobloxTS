@@ -1,19 +1,41 @@
 import { Players, ReplicatedStorage, Teams } from "./ServicesExport";
-import { rounds } from "shared/Rounds";
+import { count } from "./Types";
 
-const event: RemoteEvent = new Instance("RemoteEvent");
-event.Name = "RoundEvent";
-event.Parent = ReplicatedStorage;
+const remotevent = ReplicatedStorage.WaitForChild("RoundEvent") as RemoteEvent;
+const resetevent = ReplicatedStorage.WaitForChild("RoundResetEvent") as RemoteEvent;
+const event: BindableEvent = ReplicatedStorage.WaitForChild("KillEvent") as BindableEvent;
+const defaultGun = game.GetService("ServerStorage").WaitForChild("Conc45") as Tool;
+const knife = game.GetService("ServerStorage").WaitForChild("Knife") as Tool;
 
-const defaultGun = ReplicatedStorage.WaitForChild("Conc45");
-
-const ADM = Teams.WaitForChild("ADM") as Team;
+const ADM = Teams.WaitForChild("Host") as Team;
 const red: Team = Teams.WaitForChild("Vermelho") as Team;
 const blue: Team = Teams.WaitForChild("Azul") as Team;
+const redteam: Player[] = [];
+const blueteam: Player[] = [];
 
-export let count = 0;
+Players.PlayerAdded.Connect((player) => {
+	const stats = new Instance("Folder");
+	stats.Name = "leaderstats";
+	stats.Parent = player;
 
-const randomizer = (array: Player[]) => {
+	const kill = new Instance("IntValue");
+
+	kill.Name = "Kills";
+	kill.Value = 0;
+	kill.Parent = stats;
+});
+
+event.Event.Connect((killer) => {
+	const module = require(ReplicatedStorage.WaitForChild("TS").WaitForChild("RoundsCount") as ModuleScript) as count;
+	if (module.count.get() > 0) {
+		const player = Players.FindFirstChild(killer) as Player;
+		const kills = player.WaitForChild("leaderstats").WaitForChild("Kills") as IntValue;
+
+		kills.Value += 1;
+	}
+});
+
+const Randomizer = <T>(array: T[]): T[] => {
 	let currentIndex = array.size(),
 		randomIndex;
 
@@ -27,63 +49,100 @@ const randomizer = (array: Player[]) => {
 	return array;
 };
 
-const ContinueRound = (bluelist: Player[], redlist: Player[]): void => {
-	bluelist.forEach((player) => {
-		player.Team = blue;
-		player.LoadCharacter();
-		defaultGun.Clone().Parent = player;
+const EndRound = (blueplayers: Player[], redplayers: Player[]): void => {
+	const module = require(ReplicatedStorage.WaitForChild("TS").WaitForChild("RoundsCount") as ModuleScript) as count;
+	module.count.set(0);
+	blueplayers.forEach((play) => {
+		play.Team = Teams.WaitForChild("Espectador") as Team;
+		play.LoadCharacter();
+		const kills = play.WaitForChild("leaderstats").WaitForChild("Kills") as IntValue;
+		kills.Value = 0;
 	});
-	redlist.forEach((player) => {
-		player.Team = red;
-		player.LoadCharacter();
-		defaultGun.Clone().Parent = player;
+	redplayers.forEach((play) => {
+		play.Team = Teams.WaitForChild("Espectador") as Team;
+		play.LoadCharacter();
+		const kills = play.WaitForChild("leaderstats").WaitForChild("Kills") as IntValue;
+		kills.Value = 0;
 	});
+	blueplayers.clear();
+	redplayers.clear();
 };
 
-event.OnServerEvent.Connect((player: Player, roundSetted: unknown) => {
+const ContinueRound = (bluelist: Player[], redlist: Player[]): void => {
+	const module = require(ReplicatedStorage.WaitForChild("TS").WaitForChild("RoundsCount") as ModuleScript) as count;
+	module.count.add(-1);
+	if (module.count.get() !== 0) {
+		bluelist.forEach((player) => {
+			player.Team = blue;
+			player.LoadCharacter();
+			defaultGun.Clone().Parent = player;
+			knife.Clone().Parent = player;
+		});
+		redlist.forEach((player) => {
+			player.Team = red;
+			player.LoadCharacter();
+			defaultGun.Clone().Parent = player;
+			knife.Clone().Parent = player;
+		});
+	} else {
+		EndRound(bluelist, redlist);
+	}
+};
+
+remotevent.OnServerEvent.Connect((player: Player, roundSetted: unknown) => {
 	switch (player.Team) {
 		case ADM:
-			if (typeOf(roundSetted) === "number") {
-				if (count === 0) {
-					count = roundSetted as number;
-
-					const redteam: Player[] = [];
-					const blueteam: Player[] = [];
-
-					const playerlist = Players.GetPlayers();
-					randomizer(playerlist);
+			if (typeIs(roundSetted, "number")) {
+				const module = require(ReplicatedStorage.WaitForChild("TS").WaitForChild(
+					"RoundsCount",
+				) as ModuleScript) as count;
+				if (module.count.get() === 0) {
+					module.count.set(roundSetted);
+					const spec = Teams.WaitForChild("Espectador") as Team;
+					const playerlist = spec.GetPlayers();
+					Randomizer(playerlist);
 
 					for (let i = 0; i < playerlist.size(); i++) {
 						if (i / 2 === 0) {
 							playerlist[i].Team === red;
 							playerlist[i].LoadCharacter();
 							defaultGun.Clone().Parent = playerlist[i];
+							knife.Clone().Parent = playerlist[i];
 							redteam.push(playerlist[i]);
 						} else {
 							playerlist[i].Team === blue;
 							playerlist[i].LoadCharacter();
 							defaultGun.Clone().Parent = playerlist[i];
+							knife.Clone().Parent = playerlist[i];
 							blueteam.push(playerlist[i]);
 						}
 					}
+
+					remotevent.FireAllClients(roundSetted);
+
 					Players.PlayerAdded.Connect((playerDied) => {
 						playerDied.CharacterAdded.Connect(() => {
-							if (
-								blueteam.find(() => player.Name === player.Name) !== undefined &&
-								blue.GetPlayers() === undefined
-							) {
+							if (blueteam.find((playerDied) => true) !== undefined && blue.GetPlayers() === undefined) {
 								ContinueRound(blueteam, redteam);
-							} else if (redteam.find(playerDied) === playerDied && red.GetPlayers() === undefined) {
+							} else if (
+								redteam.find((playerDied) => true) === playerDied &&
+								red.GetPlayers() === undefined
+							) {
 								ContinueRound(blueteam, redteam);
 							}
 						});
 					});
 				}
 			} else {
-				player.Kick("argumento 'rounds' invalida.");
+				player.Kick("argumento 'rounds' invalido.");
 			}
 			break;
 		default:
 			player.Kick("Sem hackermangos mlk");
 	}
+});
+
+resetevent.OnServerEvent.Connect((player) => {
+	if (player.Team === ADM) EndRound(blueteam, redteam);
+	else player.Kick("Sem hackermangos mlk");
 });
