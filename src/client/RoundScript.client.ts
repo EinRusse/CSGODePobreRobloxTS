@@ -18,7 +18,7 @@ player.CharacterAdded.Connect(() => {
 		.GetService("ReplicatedStorage")
 		.WaitForChild("TS")
 		.WaitForChild("RoundsCount") as ModuleScript) as countclient;
-	roundcount.Text = tostring(module.get());
+	roundcount.Text = tostring(module.count.get());
 });
 
 start3.MouseButton1Click.Connect(() => roundevent.FireServer(3));
